@@ -1,6 +1,15 @@
 [package]
 name = "ls013b7dh03"
 version = "0.1.0"
+authors = ["Bogdan Olar <olar.bogdan.dev@gmail.com>"]
 edition = "2021"
+description = "LS013B7DH03 Sharp LCD driver for embedded-hal"
+keywords = ["embedded-hal", "ls013b7dh03", "LCD"]
+categories = ["embedded", "no-std"]
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/BogdanOlar/ls013b7dh03"
 
 [dependencies]
+embedded-hal = { version = "1.0" }
+embedded-graphics = { version = "0.8" }
