@@ -1,14 +1,15 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+//! LS013B7DH03 Sharp LCD driver for ['embedded-hal`]
+//!
+#![no_std]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub use embedded_hal as hal;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub mod ls013b7dh03;
+
+/// Invert the bit order in the given byte
+pub(crate) const fn reverse_bits(mut b: u8) -> u8 {
+    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+    b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+    b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+    return b;
 }
