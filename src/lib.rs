@@ -256,7 +256,7 @@ pub(crate) const fn reverse_bits(mut b: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{Ls013b7dh03, LINE_CACHE_DWORD_COUNT, LINE_TOTAL_BYTE_COUNT};
-    use crate::reverse_bits;
+    use crate::{reverse_bits, BUF_SIZE};
     use core::convert::Infallible;
     use embedded_hal::{
         digital::{ErrorType as PinErrorType, InputPin, OutputPin, PinState},
@@ -276,7 +276,7 @@ mod tests {
             state: PinState::High,
         };
 
-        let mut buffer: [u8; 2304] = [0; 2304];
+        let mut buffer = [0; BUF_SIZE];
         let line_cache: [u32; LINE_CACHE_DWORD_COUNT];
         let write_history;
 
