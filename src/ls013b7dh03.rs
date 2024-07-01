@@ -26,7 +26,7 @@ const LINE_TOTAL_BYTE_COUNT: usize =
 pub const BUF_SIZE: usize = HEIGHT * LINE_TOTAL_BYTE_COUNT;
 
 const LINE_CACHE_DWORD_COUNT: usize = HEIGHT / u32::BITS as usize;
-const FILLER_BYTE: u8 = 0x00;
+const FILLER_BYTE: u8 = 0xFF;
 
 /// LCD Mode flags
 #[derive(Debug)]
@@ -77,20 +77,16 @@ where
             line_cache: [0; LINE_CACHE_DWORD_COUNT],
         };
 
-        // Assert CS
+        // send clear command
         let _ = disp.cs_pin.set_high();
+        let _ = disp.spi.write(&[LcdMode::Clear as u8, 0x00]);
+        let _ = disp.cs_pin.set_low();
 
         // initialize buffer
         disp.init_buffer();
 
         // clear lines cache
         disp.clear_y_cache();
-
-        // send clear command
-        let _ = disp.spi.write(&[LcdMode::Clear as u8, FILLER_BYTE]);
-
-        // Deassert CS
-        let _ = disp.cs_pin.set_low();
 
         disp
     }
@@ -149,11 +145,11 @@ where
             let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
 
             if is_pixel_on {
-                // Pixel ON is represented as a `0` bit
-                self.buffer[index] &= !(1u8 << col_bit);
+                // Pixel ON is represented as a `0` bit, and the bit order must be in reverse
+                self.buffer[index] &= !(0x80 >> col_bit);
             } else {
-                // Pixel OFF is represented as a `1` bit
-                self.buffer[index] |= 1u8 << col_bit;
+                // Pixel OFF is represented as a `1` bit, and the bit order must be in reverse
+                self.buffer[index] |= 0x80 >> col_bit;
             }
 
             Ok(())
@@ -169,7 +165,8 @@ where
             let col_bit = x as usize % u8::BITS as usize;
             let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
 
-            Ok((self.buffer[index] & (1u8 << col_bit)) == 0)
+            // bit order must be in reverse
+            Ok((self.buffer[index] & (0x80 >> col_bit)) == 0)
         } else {
             Err(LcdError::OutOfBounds { x, y })
         }
