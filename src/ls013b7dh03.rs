@@ -223,7 +223,9 @@ mod tests {
             let res = disp.write(128, 128, true);
             assert!(res.is_err());
 
+            // Flush again
             disp.flush();
+
             // Save line cache for printing (destructure `disp`)
             line_cache = disp.line_cache;
             let spi = disp.spi;
@@ -233,26 +235,26 @@ mod tests {
         print_formatted_buffer(&buffer, &line_cache);
 
         for d in write_history {
-            print_spi_lines(d);
+            print_spi_lines(d.as_slice());
         }
     }
 
-    fn print_spi_lines(data: Vec<u8>) {
+    fn print_spi_lines(data: &[u8]) {
         let mut lines_itr = data.chunks_exact(LINE_TOTAL_BYTE_COUNT).into_iter();
 
-        println!("Lines:");
+        println!("spi.write:");
         while let Some(csl) = lines_itr.next() {
+            print!("\t");
             print_spi_line(csl);
             println!();
         }
 
-        let rem = lines_itr.remainder();
-
-        if rem.len() > 0 {
-            print!("Remaining bytes: ");
-            for b in rem {
+        if lines_itr.remainder().len() > 0 {
+            print!("\t*** Remaining bytes: ");
+            for b in lines_itr.remainder() {
                 print!("0x{:0>2x}, ", *b);
             }
+            println!();
         }
     }
 
