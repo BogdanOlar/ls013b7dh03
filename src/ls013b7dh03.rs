@@ -1,18 +1,30 @@
+use crate::reverse_bits;
 use embedded_hal::{digital::OutputPin, spi::SpiBus};
 
-use crate::reverse_bits;
-
-const WIDTH: usize = 128;
-const HEIGHT: usize = 128;
+/// The width, in pixels of the Ls013b7dh03 display
+pub const WIDTH: usize = 128;
+/// The height, in pixels of the Ls013b7dh03 display
+pub const HEIGHT: usize = 128;
 
 const LINE_WIDTH_BYTE_COUNT: usize = WIDTH / (u8::BITS as usize);
 const LINE_PADDING_BYTE_COUNT: usize = 1;
 const LINE_ADDRESS_BYTE_COUNT: usize = 1;
 const LINE_TOTAL_BYTE_COUNT: usize =
     LINE_ADDRESS_BYTE_COUNT + LINE_WIDTH_BYTE_COUNT + LINE_PADDING_BYTE_COUNT;
-const BUF_SIZE: usize = HEIGHT * LINE_TOTAL_BYTE_COUNT;
+
+/// The buffer size this driver needs
+pub const BUF_SIZE: usize = HEIGHT * LINE_TOTAL_BYTE_COUNT;
+
 const LINE_CACHE_DWORD_COUNT: usize = HEIGHT / u32::BITS as usize;
 const FILLER_BYTE: u8 = 0x00;
+
+/// LCD Mode flags
+#[derive(Debug)]
+#[repr(u8)]
+enum LcdMode {
+    Clear = 0x20,
+    Update = 0x80,
+}
 
 #[derive(Debug)]
 pub enum LcdError {
@@ -20,6 +32,7 @@ pub enum LcdError {
     OutOfBoundsY { y: u8 },
 }
 
+/// An Ls013b7dh03 display driver.
 pub struct Ls013b7dh03<'a, SPI, CS, CI> {
     spi: SPI,
     cs_pin: CS,
@@ -34,7 +47,9 @@ where
     CS: OutputPin,
     DISP: OutputPin,
 {
-    /// Create an Ls013b7dh03 display
+    /// Create a new Ls013b7dh03 display driver
+    ///
+    /// Because this driver does not have its own internal buffer, a `u8` mut slice of size [`BUF_SIZE`] mut be provided
     pub fn new(
         spi: SPI,
         mut cs_pin: CS,
@@ -52,14 +67,28 @@ where
             line_cache: [0; LINE_CACHE_DWORD_COUNT],
         };
 
-        // clear line cache
-        disp.clear_y_cache();
+        // Assert CS
+        let _ = disp.cs_pin.set_high();
+
         // initialize buffer
         disp.init_buffer();
+
+        // clear lines cache
+        disp.clear_y_cache();
+
+        // send clear command
+        let _ = disp.spi.write(&[LcdMode::Clear as u8, FILLER_BYTE]);
+
+        // Deassert CS
+        let _ = disp.cs_pin.set_low();
 
         disp
     }
 
+    /// Initialize the internal buffer:
+    /// - Write the on-wire address for each line, so that we only calculate them once
+    /// - Set all pixels to OFF state (which corresponds to bit `1`)
+    /// - Write the filler byte a the end of each line, so that we don't have to do it ever again
     fn init_buffer(&mut self) {
         // Write addresses and filler bytes to buffer
         for (addr, sl) in self
@@ -76,9 +105,6 @@ where
 
             sl[LINE_TOTAL_BYTE_COUNT - 1] = FILLER_BYTE;
         }
-
-        // mark entire buffer to be flushed
-        self.line_cache.iter_mut().for_each(|w| *w = 0xFFFFFFFFu32);
     }
 
     fn clear_y_cache(&mut self) {
@@ -102,6 +128,7 @@ where
         let _ = self.com_in_pin.set_low();
     }
 
+    /// Set the state of a pixel at the given coordinates
     pub fn write(&mut self, x: u8, y: u8, is_pixel_on: bool) -> Result<(), LcdError> {
         self.mark_y_cache(y)
             .map_err(|_| LcdError::OutOfBounds { x, y })?;
@@ -112,8 +139,10 @@ where
             let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
 
             if is_pixel_on {
+                // Pixel ON is represented as a `0` bit
                 self.buffer[index] &= !(1u8 << col_bit);
             } else {
+                // Pixel OFF is represented as a `1` bit
                 self.buffer[index] |= 1u8 << col_bit;
             }
 
@@ -123,17 +152,41 @@ where
         }
     }
 
+    /// Read the state of a pixel at the given coordiantes
+    pub fn read(&self, x: u8, y: u8) -> Result<bool, LcdError> {
+        if (x as usize) < WIDTH && (y as usize) < HEIGHT {
+            let col_byte = x as usize / u8::BITS as usize;
+            let col_bit = x as usize % u8::BITS as usize;
+            let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
+
+            Ok((self.buffer[index] & (1u8 << col_bit)) == 0)
+        } else {
+            Err(LcdError::OutOfBounds { x, y })
+        }
+    }
+
+    /// Update all display lines which have been modified since the last time this method was called.
+    ///
+    /// This method will try to aggregate multiple consecutive lines to be updated into a single SPI write, if possible.
     pub fn flush(&mut self) {
         // Only flush if there's something to write to spi
         if self.line_cache.into_iter().any(|w| w != 0) {
-            let _ = self.cs_pin.set_high();
-
+            // Bit-by-bit iterator over `self.line_cache` array
             let mut cache_bit_itr = (0..WIDTH).into_iter().map(|x| {
                 let i_byte = x / u32::BITS as usize;
                 let i_bit = x % u32::BITS as usize;
                 ((self.line_cache[i_byte] & (1u32 << i_bit)) != 0, x)
             });
 
+            // Assert CS
+            let _ = self.cs_pin.set_high();
+
+            // Write update command
+            let _ = self.spi.write(&[LcdMode::Update as u8]);
+
+            // Check the bits in the `line_cache` to see which display lines need to be updated.
+            // If there are one or more consecutive lines which need to be transmitted over SPI, then write them all
+            // in the same call to `spi.write()`
             while let Some((is_set, i)) = cache_bit_itr.next() {
                 if is_set {
                     let y_start = i;
@@ -160,8 +213,13 @@ where
                 }
             }
 
+            // Write filler byte
+            let _ = self.spi.write(&[FILLER_BYTE]);
+
+            // Deassert CS
             let _ = self.cs_pin.set_low();
 
+            // We've updated the display, prepare the cache for new writes
             self.clear_y_cache();
         }
     }
