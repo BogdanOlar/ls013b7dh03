@@ -8,7 +8,7 @@ use embedded_hal::{
 /// Feel free to use this to initialize the Spi passed to this driver
 pub const SPIMODE: Mode = Mode {
     polarity: Polarity::IdleLow,
-    phase: Phase::CaptureOnSecondTransition,
+    phase: Phase::CaptureOnFirstTransition,
 };
 
 /// The width, in pixels of the Ls013b7dh03 display
