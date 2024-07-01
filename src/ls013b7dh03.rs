@@ -1,5 +1,15 @@
 use crate::reverse_bits;
-use embedded_hal::{digital::OutputPin, spi::SpiBus};
+use embedded_hal::{
+    digital::OutputPin,
+    spi::{Mode, Phase, Polarity, SpiBus},
+};
+
+/// Convenience `Spi::Mode` struct instance needed by the Ls013b7dh03 display.
+/// Feel free to use this to initialize the Spi passed to this driver
+pub const SPIMODE: Mode = Mode {
+    polarity: Polarity::IdleLow,
+    phase: Phase::CaptureOnSecondTransition,
+};
 
 /// The width, in pixels of the Ls013b7dh03 display
 pub const WIDTH: usize = 128;
