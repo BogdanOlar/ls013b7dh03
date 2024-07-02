@@ -52,7 +52,6 @@ enum LcdMode {
 #[derive(Debug)]
 pub enum LcdError {
     OutOfBounds { x: u8, y: u8 },
-    OutOfBoundsY { y: u8 },
 }
 
 /// An Ls013b7dh03 display driver.
@@ -130,15 +129,6 @@ where
         self.line_cache.iter_mut().for_each(|w| *w = 0);
     }
 
-    fn mark_y_cache(&mut self, y: u8) -> Result<(), LcdError> {
-        if let Some(w) = self.line_cache.get_mut(y as usize / u32::BITS as usize) {
-            *w = *w | (1u32 << (y as usize % u32::BITS as usize));
-            Ok(())
-        } else {
-            Err(LcdError::OutOfBoundsY { y })
-        }
-    }
-
     pub fn enable(&mut self) {
         let _ = self.com_in_pin.set_high();
     }
@@ -149,10 +139,11 @@ where
 
     /// Set the state of a pixel at the given coordinates
     pub fn write(&mut self, x: u8, y: u8, is_pixel_on: bool) -> Result<(), LcdError> {
-        self.mark_y_cache(y)
-            .map_err(|_| LcdError::OutOfBounds { x, y })?;
+        if (x as usize) < WIDTH && (y as usize) < HEIGHT {
+            // mark line as in need of update
+            self.line_cache[y as usize / u32::BITS as usize] |=
+                1u32 << (y as usize % u32::BITS as usize);
 
-        if (x as usize) < WIDTH {
             let col_byte = x as usize / u8::BITS as usize;
             let col_bit = x as usize % u8::BITS as usize;
             let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
