@@ -193,10 +193,10 @@ where
         // Only flush if there's something to write to spi
         if self.line_cache.into_iter().any(|w| w != 0) {
             // Bit-by-bit iterator over `self.line_cache`. Yields whether line needs updating, and the y of the line
-            let mut cache_bits = (0..HEIGHT).map(|x| {
-                let i_byte = x / u32::BITS as usize;
-                let i_bit = x % u32::BITS as usize;
-                ((self.line_cache[i_byte] & (1u32 << i_bit)) != 0, x)
+            let mut y_cache_bits = (0..HEIGHT).map(|y| {
+                let i_byte = y / u32::BITS as usize;
+                let i_bit = y % u32::BITS as usize;
+                ((self.line_cache[i_byte] & (1u32 << i_bit)) != 0, y)
             });
 
             // Assert CS
@@ -208,12 +208,12 @@ where
             // Check the bits in the `line_cache` to see which display lines need to be updated.
             // If there are one or more consecutive lines which need to be transmitted over SPI, then write them all
             // in the same call to `spi.write()`
-            while let Some((is_set, i)) = cache_bits.next() {
+            while let Some((is_set, i)) = y_cache_bits.next() {
                 if is_set {
                     let y_start = i;
                     let mut y_end = None;
 
-                    while let Some((is_set, i)) = cache_bits.next() {
+                    while let Some((is_set, i)) = y_cache_bits.next() {
                         if is_set {
                             y_end = Some(i);
                         } else {
