@@ -208,14 +208,14 @@ where
             // Check the bits in the `line_cache` to see which display lines need to be updated.
             // If there are one or more consecutive lines which need to be transmitted over SPI, then write them all
             // in the same call to `spi.write()`
-            while let Some((is_set, i)) = y_cache_bits.next() {
+            while let Some((is_set, y)) = y_cache_bits.next() {
                 if is_set {
-                    let y_start = i;
+                    let y_start = y;
                     let mut y_end = None;
 
-                    while let Some((is_set, i)) = y_cache_bits.next() {
+                    while let Some((is_set, y)) = y_cache_bits.next() {
                         if is_set {
-                            y_end = Some(i);
+                            y_end = Some(y);
                         } else {
                             break;
                         }
@@ -454,6 +454,52 @@ mod tests {
                 assert_eq!(disp.read(x, y), Ok(false));
             }
         }
+    }
+
+    #[test]
+    fn test_read_write_grid() {
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        const GRID_SIZE_X: u8 = 3;
+        const GRID_SIZE_Y: u8 = 3;
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                let res;
+
+                if (y % GRID_SIZE_Y == 0) || (x % GRID_SIZE_X == 0) {
+                    res = disp.write(x, y, true);
+                } else {
+                    res = disp.write(x, y, false);
+                }
+
+                assert!(res.is_ok());
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                let res;
+
+                if (y % GRID_SIZE_Y == 0) || (x % GRID_SIZE_X == 0) {
+                    res = disp.read(x, y);
+                    assert_eq!(res, Ok(true));
+                } else {
+                    res = disp.read(x, y);
+                    assert_eq!(res, Ok(false));
+                }
+
+                assert!(res.is_ok());
+            }
+        }
+
+        // disp.flush();
+
+        // for d in disp.spi.data_written {
+        //     println!("***");
+        //     print_spi_lines(d.as_slice());
+        // }
     }
 
     #[test]
