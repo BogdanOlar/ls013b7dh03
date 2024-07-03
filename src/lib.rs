@@ -266,6 +266,12 @@ mod tests {
     use std::vec::Vec;
 
     #[test]
+    fn test_consts() {
+        assert_eq!(WIDTH % u8::BITS as usize, 0);
+        assert_eq!(HEIGHT % u8::BITS as usize, 0);
+    }
+
+    #[test]
     fn test_init() {
         let mut buffer = [0; BUF_SIZE];
         let disp = build_display(&mut buffer);
