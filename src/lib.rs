@@ -128,6 +128,7 @@ where
             let col_bit = x as usize % u8::BITS as usize;
             let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
 
+            // Pixel bits must be transmitted over SPI in reverse order, so that's also their order in the buffer
             Ok((index, 0x80 >> col_bit))
         } else {
             Err(LcdError::OutOfBounds { x, y })
@@ -155,9 +156,9 @@ where
             1u32 << (y as usize % u32::BITS as usize);
 
         match is_pixel_on {
-            // Pixel ON is represented as a `0` bit, and the bit order must be in reverse
+            // Pixel ON is represented as a `0` bit
             true => self.buffer[index] &= !bit_mask,
-            // Pixel OFF is represented as a `1` bit, and the bit order must be in reverse
+            // Pixel OFF is represented as a `1` bit
             false => self.buffer[index] |= bit_mask,
         }
 
@@ -245,7 +246,7 @@ where
 }
 
 /// Invert the bit order in the given byte
-pub(crate) const fn reverse_bits(mut b: u8) -> u8 {
+const fn reverse_bits(mut b: u8) -> u8 {
     b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
     b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
     b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
@@ -444,47 +445,6 @@ mod tests {
         assert_eq!(reverse_bits(b), rev_b);
     }
 
-    #[allow(dead_code)]
-    fn print_spi_lines(data: &[u8]) {
-        let mut lines_itr = data.chunks_exact(LINE_TOTAL_BYTE_COUNT).into_iter();
-
-        println!("spi.write:");
-        while let Some(csl) = lines_itr.next() {
-            print!("\t");
-            print_spi_write(csl);
-            println!();
-        }
-
-        if lines_itr.remainder().len() > 0 {
-            print!("\t*** Remaining bytes: ");
-            for b in lines_itr.remainder() {
-                print!("0x{:0>2x}, ", *b);
-            }
-            println!();
-        }
-    }
-
-    #[allow(dead_code)]
-    fn print_spi_write(line: &[u8]) {
-        assert!(line.len() == LINE_TOTAL_BYTE_COUNT);
-
-        let addr = reverse_bits(line[0]);
-
-        print!("{: >3} [", addr);
-
-        for b in line[1..(LINE_TOTAL_BYTE_COUNT - 1)].iter() {
-            for i in 0..u8::BITS {
-                if ((0x80u8 >> i) & *b) != 0 {
-                    print!(" ");
-                } else {
-                    print!("*");
-                }
-            }
-        }
-
-        print!("] fill=0x{:0>2x}", line[LINE_TOTAL_BYTE_COUNT - 1]);
-    }
-
     struct PinFixture {
         pub state: PinState,
     }
@@ -561,5 +521,46 @@ mod tests {
         };
 
         Ls013b7dh03::new(spi, cs_pin, com_in_pin, buffer)
+    }
+
+    #[allow(dead_code)]
+    fn print_spi_lines(data: &[u8]) {
+        let mut lines_itr = data.chunks_exact(LINE_TOTAL_BYTE_COUNT).into_iter();
+
+        println!("spi.write:");
+        while let Some(csl) = lines_itr.next() {
+            print!("\t");
+            print_spi_write(csl);
+            println!();
+        }
+
+        if lines_itr.remainder().len() > 0 {
+            print!("\t*** Remaining bytes: ");
+            for b in lines_itr.remainder() {
+                print!("0x{:0>2x}, ", *b);
+            }
+            println!();
+        }
+    }
+
+    #[allow(dead_code)]
+    fn print_spi_write(line: &[u8]) {
+        assert!(line.len() == LINE_TOTAL_BYTE_COUNT);
+
+        let addr = reverse_bits(line[0]);
+
+        print!("{: >3} [", addr);
+
+        for b in line[1..(LINE_TOTAL_BYTE_COUNT - 1)].iter() {
+            for i in 0..u8::BITS {
+                if ((0x80u8 >> i) & *b) != 0 {
+                    print!(" ");
+                } else {
+                    print!("*");
+                }
+            }
+        }
+
+        print!("] fill=0x{:0>2x}", line[LINE_TOTAL_BYTE_COUNT - 1]);
     }
 }
