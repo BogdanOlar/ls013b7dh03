@@ -9,13 +9,17 @@
 extern crate std;
 // =======================
 
-pub use embedded_hal as hal;
-
 use embedded_hal::{
     digital::OutputPin,
     spi::{Mode, Phase, Polarity, SpiBus},
 };
 
+/// The width, in pixels of the Ls013b7dh03 display
+pub const WIDTH: usize = 128;
+/// The height, in pixels of the Ls013b7dh03 display
+pub const HEIGHT: usize = 128;
+/// The buffer size this driver needs
+pub const BUF_SIZE: usize = HEIGHT * LINE_TOTAL_BYTE_COUNT;
 /// Convenience `Spi::Mode` struct instance needed by the Ls013b7dh03 display.
 /// Feel free to use this to initialize the Spi passed to this driver
 pub const SPIMODE: Mode = Mode {
@@ -23,20 +27,11 @@ pub const SPIMODE: Mode = Mode {
     phase: Phase::CaptureOnFirstTransition,
 };
 
-/// The width, in pixels of the Ls013b7dh03 display
-pub const WIDTH: usize = 128;
-/// The height, in pixels of the Ls013b7dh03 display
-pub const HEIGHT: usize = 128;
-
 const LINE_WIDTH_BYTE_COUNT: usize = WIDTH / (u8::BITS as usize);
 const LINE_PADDING_BYTE_COUNT: usize = 1;
 const LINE_ADDRESS_BYTE_COUNT: usize = 1;
 const LINE_TOTAL_BYTE_COUNT: usize =
     LINE_ADDRESS_BYTE_COUNT + LINE_WIDTH_BYTE_COUNT + LINE_PADDING_BYTE_COUNT;
-
-/// The buffer size this driver needs
-pub const BUF_SIZE: usize = HEIGHT * LINE_TOTAL_BYTE_COUNT;
-
 const LINE_CACHE_DWORD_COUNT: usize = HEIGHT / u32::BITS as usize;
 const FILLER_BYTE: u8 = 0xFF;
 
@@ -63,11 +58,11 @@ pub struct Ls013b7dh03<'a, SPI, CS, CI> {
     line_cache: [u32; LINE_CACHE_DWORD_COUNT],
 }
 
-impl<'a, SPI, CS, DISP> Ls013b7dh03<'a, SPI, CS, DISP>
+impl<'a, SPI, CS, CI> Ls013b7dh03<'a, SPI, CS, CI>
 where
     SPI: SpiBus,
     CS: OutputPin,
-    DISP: OutputPin,
+    CI: OutputPin,
 {
     /// Create a new Ls013b7dh03 display driver
     ///
@@ -75,7 +70,7 @@ where
     pub fn new(
         spi: SPI,
         mut cs_pin: CS,
-        mut com_in_pin: DISP,
+        mut com_in_pin: CI,
         buffer: &'a mut [u8; BUF_SIZE],
     ) -> Self {
         let _ = com_in_pin.set_low();
