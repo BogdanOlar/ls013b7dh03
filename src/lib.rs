@@ -329,8 +329,14 @@ mod tests {
         assert!(res.is_ok());
 
         // Out of bounds
-        let res = disp.write(128, 128, true);
-        assert!(res.is_err());
+        let res = disp.write(WIDTH as u8, HEIGHT as u8, true);
+        assert_eq!(
+            res,
+            Err(LcdError::OutOfBounds {
+                x: WIDTH as u8,
+                y: HEIGHT as u8
+            })
+        );
 
         // Flush
         disp.flush();
@@ -362,7 +368,7 @@ mod tests {
         let _ = disp.write(16, 3, true);
         let _ = disp.write(16, 4, true);
         let _ = disp.write(127, 127, true);
-        let _ = disp.write(128, 128, true);
+        let _ = disp.write(WIDTH as u8, HEIGHT as u8, true);
 
         assert_eq!(disp.read(0, 0), Ok(true));
         assert_eq!(disp.read(15, 3), Ok(true));
@@ -370,8 +376,11 @@ mod tests {
         assert_eq!(disp.read(16, 4), Ok(true));
         assert_eq!(disp.read(127, 127), Ok(true));
         assert_eq!(
-            disp.read(128, 128),
-            Err(LcdError::OutOfBounds { x: 128, y: 128 })
+            disp.read(WIDTH as u8, HEIGHT as u8),
+            Err(LcdError::OutOfBounds {
+                x: WIDTH as u8,
+                y: HEIGHT as u8
+            })
         );
     }
 
