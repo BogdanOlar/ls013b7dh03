@@ -332,6 +332,7 @@ mod tests {
         let spi_write_history = disp.spi.data_written;
 
         // SPI Writes:
+        // - LcdMode::Clear
         // - LcdMode::Update
         // - SPI Line with pixel (0,0)
         // - SPI Lines with pixels (15,3), (16,3), (16,4)
