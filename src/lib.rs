@@ -128,7 +128,8 @@ where
             let col_bit = x as usize % u8::BITS as usize;
             let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
 
-            // Pixel bits must be transmitted over SPI in reverse order, so that's also their order in the buffer
+            // Pixel bits must be transmitted over SPI in reverse order,
+            // so that's also their order in each byte of the buffer
             Ok((index, 0x80 >> col_bit))
         } else {
             Err(LcdError::OutOfBounds { x, y })
