@@ -49,7 +49,7 @@ enum LcdMode {
 }
 
 /// LCD Driver errors
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LcdError {
     OutOfBounds { x: u8, y: u8 },
 }
@@ -246,8 +246,8 @@ pub(crate) const fn reverse_bits(mut b: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Ls013b7dh03, LINE_CACHE_DWORD_COUNT, LINE_TOTAL_BYTE_COUNT};
-    use crate::{reverse_bits, BUF_SIZE};
+    use super::{Ls013b7dh03, LINE_TOTAL_BYTE_COUNT};
+    use crate::{reverse_bits, LcdError, BUF_SIZE, HEIGHT, WIDTH};
     use core::convert::Infallible;
     use embedded_hal::{
         digital::{ErrorType as PinErrorType, InputPin, OutputPin, PinState},
@@ -256,62 +256,127 @@ mod tests {
     use std::vec::Vec;
 
     #[test]
-    fn xx() {
-        let spi = SpiFixture {
-            data_written: Vec::new(),
-        };
-        let cs_pin = PinFixture {
-            state: PinState::High,
-        };
-        let com_in_pin = PinFixture {
-            state: PinState::High,
-        };
-
+    fn test_init() {
         let mut buffer = [0; BUF_SIZE];
-        let line_cache: [u32; LINE_CACHE_DWORD_COUNT];
-        let write_history;
+        let disp = build_display(&mut buffer);
 
-        // start a scope so that rust allows us to destructure `disp` (and use `buffer`) after its end
-        {
-            let mut disp = Ls013b7dh03::new(spi, cs_pin, com_in_pin, &mut buffer);
+        let spi_write_history = disp.spi.data_written;
 
-            // Flush initial display state
-            disp.flush();
+        assert!(spi_write_history.len() == 1);
 
-            // Top left
-            let res = disp.write(0, 0, true);
-            assert!(res.is_ok());
+        // Only one spi write: to clear display
+        assert_eq!(spi_write_history[0], vec![0x20, 0x00]);
+    }
 
-            // Upper left zone
-            let res = disp.write(15, 3, true);
-            assert!(res.is_ok());
-            // Same line
-            let res = disp.write(16, 3, true);
-            assert!(res.is_ok());
-            // Next line
-            let res = disp.write(16, 4, true);
-            assert!(res.is_ok());
+    #[test]
+    fn test_init_flush() {
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
 
-            // Bottom right
-            let res = disp.write(127, 127, true);
-            assert!(res.is_ok());
+        // This should cause no spi writes, since no pixel was modified
+        disp.flush();
 
-            // Out of bounds
-            let res = disp.write(128, 128, true);
-            assert!(res.is_err());
+        let spi_write_history = disp.spi.data_written;
 
-            // Flush again
-            disp.flush();
+        assert!(spi_write_history.len() == 1);
 
-            // Save line cache for printing (destructure `disp`)
-            line_cache = disp.line_cache;
-            let spi = disp.spi;
-            write_history = spi.data_written;
-        }
+        // Only one spi write: to clear display when the driver was created
+        assert_eq!(spi_write_history[0], vec![0x20, 0x00]);
+    }
 
-        for d in write_history {
+    #[test]
+    fn test_write() {
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        // Top left
+        let res = disp.write(0, 0, true);
+        assert!(res.is_ok());
+
+        // Upper left zone
+        let res = disp.write(15, 3, true);
+        assert!(res.is_ok());
+
+        // Same line
+        let res = disp.write(16, 3, true);
+        assert!(res.is_ok());
+
+        // Next line
+        let res = disp.write(16, 4, true);
+        assert!(res.is_ok());
+
+        // Bottom right
+        let res = disp.write(127, 127, true);
+        assert!(res.is_ok());
+
+        // Out of bounds
+        let res = disp.write(128, 128, true);
+        assert!(res.is_err());
+
+        // Flush
+        disp.flush();
+
+        let spi_write_history = disp.spi.data_written;
+
+        // SPI Writes:
+        // - LcdMode::Update
+        // - SPI Line with pixel (0,0)
+        // - SPI Lines with pixels (15,3), (16,3), (16,4)
+        // - SPI Line with pixel (127,128)
+        // - FILLER byte
+        assert_eq!(spi_write_history.len(), 6);
+
+        for d in spi_write_history {
+            println!("***");
             print_spi_lines(d.as_slice());
         }
+    }
+
+    #[test]
+    fn test_read_write_full() {
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.read(x, y), Ok(false));
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert!(disp.write(x, y, true).is_ok())
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.read(x, y), Ok(true));
+            }
+        }
+    }
+
+    #[test]
+    fn test_read() {
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        let _ = disp.write(0, 0, true);
+        let _ = disp.write(15, 3, true);
+        let _ = disp.write(16, 3, true);
+        let _ = disp.write(16, 4, true);
+        let _ = disp.write(127, 127, true);
+        let _ = disp.write(128, 128, true);
+
+        assert_eq!(disp.read(0, 0), Ok(true));
+        assert_eq!(disp.read(15, 3), Ok(true));
+        assert_eq!(disp.read(16, 3), Ok(true));
+        assert_eq!(disp.read(16, 4), Ok(true));
+        assert_eq!(disp.read(127, 127), Ok(true));
+        assert_eq!(
+            disp.read(128, 128),
+            Err(LcdError::OutOfBounds { x: 128, y: 128 })
+        );
     }
 
     fn print_spi_lines(data: &[u8]) {
@@ -412,5 +477,22 @@ mod tests {
 
     impl SpiErrorType for SpiFixture {
         type Error = Infallible;
+    }
+
+    /// Build a display driver with the spi fixtures and th egiven buffer
+    fn build_display(
+        buffer: &mut [u8; BUF_SIZE],
+    ) -> Ls013b7dh03<SpiFixture, PinFixture, PinFixture> {
+        let spi = SpiFixture {
+            data_written: Vec::new(),
+        };
+        let cs_pin = PinFixture {
+            state: PinState::High,
+        };
+        let com_in_pin = PinFixture {
+            state: PinState::High,
+        };
+
+        Ls013b7dh03::new(spi, cs_pin, com_in_pin, buffer)
     }
 }
