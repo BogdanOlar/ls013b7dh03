@@ -125,6 +125,20 @@ where
         }
     }
 
+    /// Get the buffer index corresponding to a pixel coord, and its bitmask which shows which bit in the byte
+    /// represents the pixel.
+    fn get_pixel_addr(&self, x: u8, y: u8) -> Result<(usize, u8), LcdError> {
+        if (x as usize) < WIDTH && (y as usize) < HEIGHT {
+            let col_byte = x as usize / u8::BITS as usize;
+            let col_bit = x as usize % u8::BITS as usize;
+            let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
+
+            Ok((index, 0x80 >> col_bit))
+        } else {
+            Err(LcdError::OutOfBounds { x, y })
+        }
+    }
+
     fn clear_y_cache(&mut self) {
         self.line_cache.iter_mut().for_each(|w| *w = 0);
     }
@@ -139,41 +153,40 @@ where
 
     /// Set the state of a pixel at the given coordinates
     pub fn write(&mut self, x: u8, y: u8, is_pixel_on: bool) -> Result<(), LcdError> {
-        if (x as usize) < WIDTH && (y as usize) < HEIGHT {
-            // mark line as in need of update
-            self.line_cache[y as usize / u32::BITS as usize] |=
-                1u32 << (y as usize % u32::BITS as usize);
+        let (index, bit_mask) = self.get_pixel_addr(x, y)?;
 
-            let col_byte = x as usize / u8::BITS as usize;
-            let col_bit = x as usize % u8::BITS as usize;
-            let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
+        // mark line as in need of update
+        self.line_cache[y as usize / u32::BITS as usize] |=
+            1u32 << (y as usize % u32::BITS as usize);
 
-            if is_pixel_on {
-                // Pixel ON is represented as a `0` bit, and the bit order must be in reverse
-                self.buffer[index] &= !(0x80 >> col_bit);
-            } else {
-                // Pixel OFF is represented as a `1` bit, and the bit order must be in reverse
-                self.buffer[index] |= 0x80 >> col_bit;
-            }
-
-            Ok(())
-        } else {
-            Err(LcdError::OutOfBounds { x, y })
+        match is_pixel_on {
+            // Pixel ON is represented as a `0` bit, and the bit order must be in reverse
+            true => self.buffer[index] &= !bit_mask,
+            // Pixel OFF is represented as a `1` bit, and the bit order must be in reverse
+            false => self.buffer[index] |= bit_mask,
         }
+
+        Ok(())
     }
 
     /// Read the state of a pixel at the given coordiantes
     pub fn read(&self, x: u8, y: u8) -> Result<bool, LcdError> {
-        if (x as usize) < WIDTH && (y as usize) < HEIGHT {
-            let col_byte = x as usize / u8::BITS as usize;
-            let col_bit = x as usize % u8::BITS as usize;
-            let index = (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
+        let (index, bit_mask) = self.get_pixel_addr(x, y)?;
 
-            // bit order must be in reverse
-            Ok((self.buffer[index] & (0x80 >> col_bit)) == 0)
-        } else {
-            Err(LcdError::OutOfBounds { x, y })
-        }
+        Ok((self.buffer[index] & bit_mask) == 0)
+    }
+
+    /// Invert the state of a pixel at the given coordinates, and return current state
+    pub fn flip(&mut self, x: u8, y: u8) -> Result<bool, LcdError> {
+        let (index, bit_mask) = self.get_pixel_addr(x, y)?;
+
+        // mark line as in need of update
+        self.line_cache[y as usize / u32::BITS as usize] |=
+            1u32 << (y as usize % u32::BITS as usize);
+
+        self.buffer[index] ^= bit_mask;
+
+        Ok((self.buffer[index] & bit_mask) == 0)
     }
 
     /// Update all display lines which have been modified since the last time this method was called.
@@ -183,7 +196,7 @@ where
         // Only flush if there's something to write to spi
         if self.line_cache.into_iter().any(|w| w != 0) {
             // Bit-by-bit iterator over `self.line_cache` array
-            let mut cache_bit_itr = (0..WIDTH).into_iter().map(|x| {
+            let mut cache_bit_itr = (0..WIDTH).map(|x| {
                 let i_byte = x / u32::BITS as usize;
                 let i_bit = x % u32::BITS as usize;
                 ((self.line_cache[i_byte] & (1u32 << i_bit)) != 0, x)
@@ -241,7 +254,7 @@ pub(crate) const fn reverse_bits(mut b: u8) -> u8 {
     b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
     b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
     b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
-    return b;
+    b
 }
 
 #[cfg(test)]
@@ -326,34 +339,10 @@ mod tests {
         // - FILLER byte
         assert_eq!(spi_write_history.len(), 6);
 
-        for d in spi_write_history {
-            println!("***");
-            print_spi_lines(d.as_slice());
-        }
-    }
-
-    #[test]
-    fn test_read_write_full() {
-        let mut buffer = [0; BUF_SIZE];
-        let mut disp = build_display(&mut buffer);
-
-        for x in 0..WIDTH as u8 {
-            for y in 0..HEIGHT as u8 {
-                assert_eq!(disp.read(x, y), Ok(false));
-            }
-        }
-
-        for x in 0..WIDTH as u8 {
-            for y in 0..HEIGHT as u8 {
-                assert!(disp.write(x, y, true).is_ok())
-            }
-        }
-
-        for x in 0..WIDTH as u8 {
-            for y in 0..HEIGHT as u8 {
-                assert_eq!(disp.read(x, y), Ok(true));
-            }
-        }
+        // for d in spi_write_history {
+        //     println!("***");
+        //     print_spi_lines(d.as_slice());
+        // }
     }
 
     #[test]
@@ -379,13 +368,94 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_read_write_full() {
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.read(x, y), Ok(false));
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert!(disp.write(x, y, true).is_ok())
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.read(x, y), Ok(true));
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert!(disp.write(x, y, false).is_ok())
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.read(x, y), Ok(false));
+            }
+        }
+    }
+
+    #[test]
+    fn test_read_flip_full() {
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.read(x, y), Ok(false));
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.flip(x, y), Ok(true));
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.read(x, y), Ok(true));
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.flip(x, y), Ok(false));
+            }
+        }
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.read(x, y), Ok(false));
+            }
+        }
+    }
+
+    #[test]
+    fn test_reverse_bits() {
+        let b = 0b10110111;
+        let rev_b = 0b11101101;
+
+        assert_eq!(reverse_bits(b), rev_b);
+    }
+
+    #[allow(dead_code)]
     fn print_spi_lines(data: &[u8]) {
         let mut lines_itr = data.chunks_exact(LINE_TOTAL_BYTE_COUNT).into_iter();
 
         println!("spi.write:");
         while let Some(csl) = lines_itr.next() {
             print!("\t");
-            print_spi_line(csl);
+            print_spi_write(csl);
             println!();
         }
 
@@ -398,7 +468,8 @@ mod tests {
         }
     }
 
-    fn print_spi_line(line: &[u8]) {
+    #[allow(dead_code)]
+    fn print_spi_write(line: &[u8]) {
         assert!(line.len() == LINE_TOTAL_BYTE_COUNT);
 
         let addr = reverse_bits(line[0]);
