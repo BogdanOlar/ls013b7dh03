@@ -269,6 +269,9 @@ mod tests {
     fn test_consts() {
         assert_eq!(WIDTH % u8::BITS as usize, 0);
         assert_eq!(HEIGHT % u8::BITS as usize, 0);
+
+        // If this fails, then the size of `line_cache` needs to be increased/adjusted
+        assert_eq!(HEIGHT % u32::BITS as usize, 0);
     }
 
     #[test]
