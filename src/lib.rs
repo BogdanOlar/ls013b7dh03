@@ -203,7 +203,8 @@ where
             let _ = self.cs_pin.set_high();
 
             // Write update command
-            let _ = self.spi.write(&[LcdMode::Update as u8]);
+            let spi_ret = self.spi.write(&[LcdMode::Update as u8]);
+            assert!(spi_ret.is_ok());
 
             // Check the bits in the `line_cache` to see which display lines need to be updated.
             // If there are one or more consecutive lines which need to be transmitted over SPI, then write them all
@@ -230,12 +231,14 @@ where
                         i_end = i_start + LINE_TOTAL_BYTE_COUNT;
                     }
 
-                    let _ = self.spi.write(&self.buffer[i_start..i_end]);
+                    let spi_ret = self.spi.write(&self.buffer[i_start..i_end]);
+                    assert!(spi_ret.is_ok());
                 }
             }
 
             // Write filler byte
-            let _ = self.spi.write(&[FILLER_BYTE]);
+            let spi_ret = self.spi.write(&[FILLER_BYTE]);
+            assert!(spi_ret.is_ok());
 
             // Deassert CS
             let _ = self.cs_pin.set_low();
@@ -489,8 +492,6 @@ mod tests {
                     res = disp.read(x, y);
                     assert_eq!(res, Ok(false));
                 }
-
-                assert!(res.is_ok());
             }
         }
 
