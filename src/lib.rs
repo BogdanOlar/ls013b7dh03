@@ -422,6 +422,9 @@ mod tests {
                     assert_eq!(res, Some(&true));
                 }
             }
+
+            // clear spi writes
+            disp.spi.data_written.clear();
         }
 
         for x in 0..WIDTH as u8 {
@@ -456,6 +459,9 @@ mod tests {
                     assert_eq!(res, Some(&false));
                 }
             }
+
+            // clear spi writes
+            disp.spi.data_written.clear();
         }
     }
 
@@ -502,6 +508,9 @@ mod tests {
                     assert_eq!(res, Some(&true));
                 }
             }
+
+            // clear spi writes
+            disp.spi.data_written.clear();
         }
 
         for x in 0..WIDTH as u8 {
@@ -536,6 +545,9 @@ mod tests {
                     assert_eq!(res, Some(&false));
                 }
             }
+
+            // clear spi writes
+            disp.spi.data_written.clear();
         }
     }
 
@@ -579,7 +591,7 @@ mod tests {
 
             let mut spi_parsed_pixels = HashMap::<(u8, u8), bool>::new();
 
-            for spi_writes in disp.spi.data_written {
+            for spi_writes in disp.spi.data_written.clone() {
                 for line in parse_spi_lines(&spi_writes) {
                     for (k, v) in line.pixels.iter().map(|p| ((p.x, p.y), p.is_on)) {
                         spi_parsed_pixels.insert(k, v);
@@ -599,6 +611,9 @@ mod tests {
                     }
                 }
             }
+
+            // clear spi writes
+            disp.spi.data_written.clear();
         }
     }
 
