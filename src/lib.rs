@@ -110,7 +110,7 @@ where
             .enumerate()
         {
             // LCD address space starts at 1 for y
-            sl[0] = reverse_bits((addr + 1) as u8);
+            sl[0] = ((addr + 1) as u8).reverse_bits();
 
             sl[1..(LINE_TOTAL_BYTE_COUNT - 1)]
                 .iter_mut()
@@ -249,20 +249,10 @@ where
     }
 }
 
-/// Invert the bit order in the given byte
-const fn reverse_bits(mut b: u8) -> u8 {
-    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
-    b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
-    b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
-    b
-}
-
 #[cfg(test)]
 mod tests {
     use super::{Ls013b7dh03, LINE_TOTAL_BYTE_COUNT};
-    use crate::{
-        reverse_bits, LcdError, BUF_SIZE, FILLER_BYTE, HEIGHT, LINE_ADDRESS_BYTE_COUNT, WIDTH,
-    };
+    use crate::{LcdError, BUF_SIZE, FILLER_BYTE, HEIGHT, LINE_ADDRESS_BYTE_COUNT, WIDTH};
     use core::convert::Infallible;
     use embedded_hal::{
         digital::{ErrorType as PinErrorType, InputPin, OutputPin, PinState},
@@ -612,14 +602,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_reverse_bits() {
-        let b = 0b10110111;
-        let rev_b = 0b11101101;
-
-        assert_eq!(reverse_bits(b), rev_b);
-    }
-
     struct PinFixture {
         pub state: PinState,
     }
@@ -763,7 +745,7 @@ mod tests {
     fn print_spi_write(line: &[u8]) {
         assert!(line.len() == LINE_TOTAL_BYTE_COUNT);
 
-        let addr = reverse_bits(line[0]);
+        let addr = line[0].reverse_bits();
 
         print!("{: >3} [", addr);
 
