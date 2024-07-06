@@ -260,13 +260,15 @@ const fn reverse_bits(mut b: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{Ls013b7dh03, LINE_TOTAL_BYTE_COUNT};
-    use crate::{reverse_bits, LcdError, BUF_SIZE, HEIGHT, WIDTH};
+    use crate::{
+        reverse_bits, LcdError, BUF_SIZE, FILLER_BYTE, HEIGHT, LINE_ADDRESS_BYTE_COUNT, WIDTH,
+    };
     use core::convert::Infallible;
     use embedded_hal::{
         digital::{ErrorType as PinErrorType, InputPin, OutputPin, PinState},
         spi::{ErrorType as SpiErrorType, SpiBus},
     };
-    use std::vec::Vec;
+    use std::{collections::HashMap, vec::Vec};
 
     #[test]
     fn test_consts() {
@@ -410,6 +412,28 @@ mod tests {
             }
         }
 
+        // Check that on-wire data matches the expected values
+        {
+            disp.flush();
+
+            let mut spi_parsed_pixels = HashMap::<(u8, u8), bool>::new();
+
+            for spi_writes in disp.spi.data_written.clone() {
+                for line in parse_spi_lines(&spi_writes) {
+                    for (k, v) in line.pixels.iter().map(|p| ((p.x, p.y), p.is_on)) {
+                        spi_parsed_pixels.insert(k, v);
+                    }
+                }
+            }
+
+            for x in 0..WIDTH as u8 {
+                for y in 0..HEIGHT as u8 {
+                    let res = spi_parsed_pixels.get(&(x, y));
+                    assert_eq!(res, Some(&true));
+                }
+            }
+        }
+
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
                 assert!(disp.write(x, y, false).is_ok())
@@ -419,6 +443,28 @@ mod tests {
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
                 assert_eq!(disp.read(x, y), Ok(false));
+            }
+        }
+
+        // Check that on-wire data matches the expected values
+        {
+            disp.flush();
+
+            let mut spi_parsed_pixels = HashMap::<(u8, u8), bool>::new();
+
+            for spi_writes in disp.spi.data_written.clone() {
+                for line in parse_spi_lines(&spi_writes) {
+                    for (k, v) in line.pixels.iter().map(|p| ((p.x, p.y), p.is_on)) {
+                        spi_parsed_pixels.insert(k, v);
+                    }
+                }
+            }
+
+            for x in 0..WIDTH as u8 {
+                for y in 0..HEIGHT as u8 {
+                    let res = spi_parsed_pixels.get(&(x, y));
+                    assert_eq!(res, Some(&false));
+                }
             }
         }
     }
@@ -446,6 +492,28 @@ mod tests {
             }
         }
 
+        // Check that on-wire data matches the expected values
+        {
+            disp.flush();
+
+            let mut spi_parsed_pixels = HashMap::<(u8, u8), bool>::new();
+
+            for spi_writes in disp.spi.data_written.clone() {
+                for line in parse_spi_lines(&spi_writes) {
+                    for (k, v) in line.pixels.iter().map(|p| ((p.x, p.y), p.is_on)) {
+                        spi_parsed_pixels.insert(k, v);
+                    }
+                }
+            }
+
+            for x in 0..WIDTH as u8 {
+                for y in 0..HEIGHT as u8 {
+                    let res = spi_parsed_pixels.get(&(x, y));
+                    assert_eq!(res, Some(&true));
+                }
+            }
+        }
+
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
                 assert_eq!(disp.flip(x, y), Ok(false));
@@ -455,6 +523,28 @@ mod tests {
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
                 assert_eq!(disp.read(x, y), Ok(false));
+            }
+        }
+
+        // Check that on-wire data matches the expected values
+        {
+            disp.flush();
+
+            let mut spi_parsed_pixels = HashMap::<(u8, u8), bool>::new();
+
+            for spi_writes in disp.spi.data_written.clone() {
+                for line in parse_spi_lines(&spi_writes) {
+                    for (k, v) in line.pixels.iter().map(|p| ((p.x, p.y), p.is_on)) {
+                        spi_parsed_pixels.insert(k, v);
+                    }
+                }
+            }
+
+            for x in 0..WIDTH as u8 {
+                for y in 0..HEIGHT as u8 {
+                    let res = spi_parsed_pixels.get(&(x, y));
+                    assert_eq!(res, Some(&false));
+                }
             }
         }
     }
@@ -483,24 +573,43 @@ mod tests {
 
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
-                let res;
+                let res = disp.read(x, y);
 
                 if (y % GRID_SIZE_Y == 0) || (x % GRID_SIZE_X == 0) {
-                    res = disp.read(x, y);
                     assert_eq!(res, Ok(true));
                 } else {
-                    res = disp.read(x, y);
                     assert_eq!(res, Ok(false));
                 }
             }
         }
 
-        // disp.flush();
+        // Check that on-wire data matches the expected values
+        {
+            disp.flush();
 
-        // for d in disp.spi.data_written {
-        //     println!("***");
-        //     print_spi_lines(d.as_slice());
-        // }
+            let mut spi_parsed_pixels = HashMap::<(u8, u8), bool>::new();
+
+            for spi_writes in disp.spi.data_written {
+                for line in parse_spi_lines(&spi_writes) {
+                    for (k, v) in line.pixels.iter().map(|p| ((p.x, p.y), p.is_on)) {
+                        spi_parsed_pixels.insert(k, v);
+                    }
+                    assert_eq!(line.filler, FILLER_BYTE);
+                }
+            }
+
+            for x in 0..WIDTH as u8 {
+                for y in 0..HEIGHT as u8 {
+                    let res = spi_parsed_pixels.get(&(x, y));
+
+                    if (y % GRID_SIZE_Y == 0) || (x % GRID_SIZE_X == 0) {
+                        assert_eq!(res, Some(&true));
+                    } else {
+                        assert_eq!(res, Some(&false));
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -587,6 +696,47 @@ mod tests {
         };
 
         Ls013b7dh03::new(spi, cs_pin, com_in_pin, buffer)
+    }
+
+    #[derive(Debug)]
+    struct LcdPixel {
+        x: u8,
+        y: u8,
+        is_on: bool,
+    }
+
+    #[derive(Debug)]
+    struct SpiDisplayLine {
+        /// pixel in coord space ([0..WIDTH], [0..HEIGHT]), and wether or not it is ON
+        pixels: Vec<LcdPixel>,
+        /// Line filler byte
+        filler: u8,
+    }
+
+    impl From<&[u8]> for SpiDisplayLine {
+        fn from(line: &[u8]) -> Self {
+            Self {
+                pixels: (0..WIDTH)
+                    .map(|x| {
+                        let i_byte = (x / u8::BITS as usize) + LINE_ADDRESS_BYTE_COUNT;
+                        let i_bit = x % u8::BITS as usize;
+                        LcdPixel {
+                            x: x.try_into().unwrap(),
+                            y: line[0].reverse_bits() - 1,
+                            is_on: (line[i_byte] & (0x80u8 >> i_bit)) == 0,
+                        }
+                    })
+                    .collect(),
+                filler: line[LINE_TOTAL_BYTE_COUNT - 1],
+            }
+        }
+    }
+
+    fn parse_spi_lines(data: &[u8]) -> Vec<SpiDisplayLine> {
+        data.chunks_exact(LINE_TOTAL_BYTE_COUNT)
+            .into_iter()
+            .map(|sl| SpiDisplayLine::from(sl))
+            .collect()
     }
 
     #[allow(dead_code)]
