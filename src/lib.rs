@@ -98,6 +98,11 @@ where
         disp
     }
 
+    /// Return the resources used to create this driver
+    pub fn destroy(self) -> (SPI, CS, CI) {
+        (self.spi, self.cs_pin, self.com_in_pin)
+    }
+
     /// Initialize the internal buffer:
     /// - Write the on-wire address for each line, so that we only calculate them once
     /// - Set all pixels to OFF state (which corresponds to bit `1`)
