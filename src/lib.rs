@@ -1,4 +1,4 @@
-//! LS013B7DH03 Sharp LCD driver for [embedded-hal v1](https://github.com/rust-embedded/embedded-hal)
+//! LS013B7DH03 Sharp LCD driver for [embedded-hal v1.0](https://github.com/rust-embedded/embedded-hal)
 //!
 #![no_std]
 
@@ -66,7 +66,7 @@ where
 {
     /// Create a new Ls013b7dh03 display driver
     ///
-    /// Because this driver does not have its own internal buffer, a `u8` mut slice of size [`BUF_SIZE`] mut be provided
+    /// This driver does not have its own internal buffer, so a `u8` mut slice of size [`BUF_SIZE`] must be provided
     pub fn new(
         spi: SPI,
         mut cs_pin: CS,
@@ -620,6 +620,17 @@ mod tests {
             // clear spi writes
             disp.spi.data_written.clear();
         }
+    }
+
+    #[test]
+    fn test_destroy() {
+        let mut buffer = [0; BUF_SIZE];
+        let disp = build_display(&mut buffer);
+
+        let (_spi, _cs_pin, _ci_pin) = disp.destroy();
+
+        // `disp` should no longer be available. The following line would cause a `borrow of moved value` compile error
+        // disp.flush();
     }
 
     struct PinFixture {
