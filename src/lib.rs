@@ -157,15 +157,14 @@ where
     pub fn write(&mut self, x: u8, y: u8, is_pixel_on: bool) -> Result<(), LcdError> {
         let (index, bit_mask) = self.get_pixel_addr(x, y)?;
 
-        // mark line as in need of update
-        self.line_cache[y as usize / u32::BITS as usize] |=
-            1u32 << (y as usize % u32::BITS as usize);
+        // We only want to mark this line to be transmitted over SPI if the pixel state actually needs changing
+        if ((self.buffer[index] & bit_mask) == 0) ^ is_pixel_on {
+            // mark line as in need of update
+            self.line_cache[y as usize / u32::BITS as usize] |=
+                1u32 << (y as usize % u32::BITS as usize);
 
-        match is_pixel_on {
-            // Pixel ON is represented as a `0` bit
-            true => self.buffer[index] &= !bit_mask,
-            // Pixel OFF is represented as a `1` bit
-            false => self.buffer[index] |= bit_mask,
+            // flip the pixel state
+            self.buffer[index] ^= bit_mask;
         }
 
         Ok(())
@@ -356,6 +355,28 @@ mod tests {
         //     println!("***");
         //     print_spi_lines(d.as_slice());
         // }
+    }
+
+    #[test]
+    fn redundant_writes() {
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        // clear the SPI writes before redundant write
+        disp.spi.data_written.clear();
+
+        // Write "OFF" to a pixels that are already "OFF". Should produce no additional SPI writes.
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                assert_eq!(disp.write(x, y, false), Ok(()));
+            }
+        }
+
+        // Flush
+        disp.flush();
+
+        // No SPI writes were caused by calling write with a pixel state that is identical with the one in the buffer
+        assert_eq!(disp.spi.data_written.len(), 0);
     }
 
     #[test]
