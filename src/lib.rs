@@ -347,14 +347,9 @@ mod tests {
         // - LcdMode::Update
         // - SPI Line with pixel (0,0)
         // - SPI Lines with pixels (15,3), (16,3), (16,4)
-        // - SPI Line with pixel (127,128)
+        // - SPI Line with pixel (127,127)
         // - FILLER byte
         assert_eq!(spi_write_history.len(), 6);
-
-        // for d in spi_write_history {
-        //     println!("***");
-        //     print_spi_lines(d.as_slice());
-        // }
     }
 
     #[test]
@@ -365,7 +360,7 @@ mod tests {
         // clear the SPI writes before redundant write
         disp.spi.data_written.clear();
 
-        // Write "OFF" to a pixels that are already "OFF". Should produce no additional SPI writes.
+        // Write "OFF" to pixels that are already "OFF". Should produce no additional SPI writes.
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
                 assert_eq!(disp.write(x, y, false), Ok(()));
