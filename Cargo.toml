@@ -12,4 +12,8 @@ repository = "https://github.com/BogdanOlar/ls013b7dh03"
 
 [dependencies]
 embedded-hal = { version = "1.0" }
-embedded-graphics = { version = "0.8" }
+embedded-graphics = { version = "0.8", optional = true }
+
+[features]
+embedded_graphics = ["dep:embedded-graphics"]
+default = []

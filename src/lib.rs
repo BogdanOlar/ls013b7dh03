@@ -14,6 +14,15 @@ use embedded_hal::{
     spi::{Mode, Phase, Polarity, SpiBus},
 };
 
+#[cfg(feature = "embedded_graphics")]
+use embedded_graphics::{
+    draw_target::DrawTarget,
+    geometry::{Dimensions, Point, Size},
+    pixelcolor::BinaryColor,
+    primitives::Rectangle,
+    Pixel,
+};
+
 /// The width, in pixels of the Ls013b7dh03 display
 pub const WIDTH: usize = 128;
 /// The height, in pixels of the Ls013b7dh03 display
@@ -253,11 +262,73 @@ where
     }
 }
 
+#[cfg(feature = "embedded_graphics")]
+impl<'a, SPI, CS, CI> Dimensions for Ls013b7dh03<'a, SPI, CS, CI> {
+    fn bounding_box(&self) -> Rectangle {
+        Rectangle {
+            top_left: Point { x: 0, y: 0 },
+            size: Size {
+                width: WIDTH as u32,
+                height: HEIGHT as u32,
+            },
+        }
+    }
+}
+
+#[cfg(feature = "embedded_graphics")]
+impl<'a, SPI, CS, CI> DrawTarget for Ls013b7dh03<'a, SPI, CS, CI>
+where
+    SPI: SpiBus,
+    CS: OutputPin,
+    CI: OutputPin,
+{
+    type Color = BinaryColor;
+    type Error = core::convert::Infallible;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        for Pixel(coord, color) in pixels.into_iter() {
+            const WIDTH_I32: i32 = WIDTH as i32;
+            const HEIGHT_I32: i32 = HEIGHT as i32;
+            // Check if the pixel coordinates are out of bounds (negative or greater than
+            // (WIDTH,HEIGHT)). `DrawTarget` implementation are required to discard any out of bounds
+            // pixels without returning an error or causing a panic.
+            //
+            // NOTE: we are basically re-implementing `Ls013b7dh03.write()` here because we don't want to do the bounds
+            //       check multiple times, AND this method may not return an OutOfBounds error or panic anyway.
+            if let Ok((x @ 0..=WIDTH_I32, y @ 0..=HEIGHT_I32)) = coord.try_into() {
+                let col_byte = x as usize / u8::BITS as usize;
+                let col_bit = x as usize % u8::BITS as usize;
+                let index =
+                    (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
+                // Pixel bits must be transmitted over SPI in reverse order,
+                // so that's also their order in each byte of the buffer
+                let bit_mask = 0x80 >> col_bit;
+
+                // We only want to mark this line to be transmitted over SPI if the pixel state actually needs changing
+                if ((self.buffer[index] & bit_mask) == 0) ^ color.is_on() {
+                    // mark line as in need of update
+                    self.line_cache[y as usize / u32::BITS as usize] |=
+                        1u32 << (y as usize % u32::BITS as usize);
+
+                    // flip the pixel state
+                    self.buffer[index] ^= bit_mask;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Ls013b7dh03, LINE_TOTAL_BYTE_COUNT};
     use crate::{LcdError, BUF_SIZE, FILLER_BYTE, HEIGHT, LINE_ADDRESS_BYTE_COUNT, WIDTH};
     use core::convert::Infallible;
+    use embedded_graphics::Pixel;
     use embedded_hal::{
         digital::{ErrorType as PinErrorType, InputPin, OutputPin, PinState},
         spi::{ErrorType as SpiErrorType, SpiBus},
@@ -265,7 +336,7 @@ mod tests {
     use std::{collections::HashMap, vec::Vec};
 
     #[test]
-    fn test_consts() {
+    fn consts() {
         assert_eq!(WIDTH % u8::BITS as usize, 0);
         assert_eq!(HEIGHT % u8::BITS as usize, 0);
 
@@ -274,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn test_init() {
+    fn init() {
         let mut buffer = [0; BUF_SIZE];
         let disp = build_display(&mut buffer);
 
@@ -287,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn test_init_flush() {
+    fn init_flush() {
         let mut buffer = [0; BUF_SIZE];
         let mut disp = build_display(&mut buffer);
 
@@ -303,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write() {
+    fn write() {
         let mut buffer = [0; BUF_SIZE];
         let mut disp = build_display(&mut buffer);
 
@@ -375,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read() {
+    fn read() {
         let mut buffer = [0; BUF_SIZE];
         let mut disp = build_display(&mut buffer);
 
@@ -401,9 +472,12 @@ mod tests {
     }
 
     #[test]
-    fn test_read_write_full() {
+    fn read_write_full() {
         let mut buffer = [0; BUF_SIZE];
         let mut disp = build_display(&mut buffer);
+
+        // clear spi writes
+        disp.spi.data_written.clear();
 
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
@@ -487,9 +561,12 @@ mod tests {
     }
 
     #[test]
-    fn test_read_flip_full() {
+    fn read_flip_full() {
         let mut buffer = [0; BUF_SIZE];
         let mut disp = build_display(&mut buffer);
+
+        // clear spi writes
+        disp.spi.data_written.clear();
 
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
@@ -573,12 +650,15 @@ mod tests {
     }
 
     #[test]
-    fn test_read_write_grid() {
+    fn read_write_grid() {
         let mut buffer = [0; BUF_SIZE];
         let mut disp = build_display(&mut buffer);
 
         const GRID_SIZE_X: u8 = 3;
         const GRID_SIZE_Y: u8 = 3;
+
+        // clear spi writes
+        disp.spi.data_written.clear();
 
         for x in 0..WIDTH as u8 {
             for y in 0..HEIGHT as u8 {
@@ -639,7 +719,130 @@ mod tests {
     }
 
     #[test]
-    fn test_destroy() {
+    fn embedded_graphics_redundant_writes() {
+        use embedded_graphics::{
+            draw_target::DrawTarget, geometry::Point, pixelcolor::BinaryColor,
+        };
+
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        // clear the SPI writes before redundant write
+        disp.spi.data_written.clear();
+
+        // prepare iterator for the pixels to be written to "OFF" state
+        let pixels = (0..WIDTH)
+            .flat_map(move |x| (0..HEIGHT).map(move |y| (x, y)))
+            .map(|(x, y)| {
+                Pixel::<BinaryColor>(
+                    Point {
+                        x: x as i32,
+                        y: y as i32,
+                    },
+                    BinaryColor::Off,
+                )
+            });
+
+        // Write "OFF" to pixels that are already "OFF". Should produce no additional SPI writes.
+        // do the grid writes using the `embedded-graphics` implementation of `DrawTarget`
+        let res = disp.draw_iter(pixels);
+        assert!(res.is_ok());
+
+        // Flush
+        disp.flush();
+
+        // No SPI writes were caused by calling write with a pixel state that is identical with the one in the buffer
+        assert_eq!(disp.spi.data_written.len(), 0);
+    }
+
+    #[test]
+    fn embedded_graphics_read_write_grid() {
+        use embedded_graphics::{
+            draw_target::DrawTarget, geometry::Point, pixelcolor::BinaryColor,
+        };
+
+        let mut buffer = [0; BUF_SIZE];
+        let mut disp = build_display(&mut buffer);
+
+        const GRID_SIZE_X: usize = 3;
+        const GRID_SIZE_Y: usize = 3;
+
+        // clear spi writes
+        disp.spi.data_written.clear();
+
+        // prepare iterator for the pixels to be written
+        let pixels = (0..WIDTH)
+            .flat_map(move |x| (0..HEIGHT).map(move |y| (x, y)))
+            .map(|(x, y)| {
+                if (y % GRID_SIZE_Y == 0) || (x % GRID_SIZE_X == 0) {
+                    Pixel::<BinaryColor>(
+                        Point {
+                            x: x as i32,
+                            y: y as i32,
+                        },
+                        BinaryColor::On,
+                    )
+                } else {
+                    Pixel::<BinaryColor>(
+                        Point {
+                            x: x as i32,
+                            y: y as i32,
+                        },
+                        BinaryColor::Off,
+                    )
+                }
+            });
+
+        // do the grid writes using the `embedded-graphics` implementation of `DrawTarget`
+        let res = disp.draw_iter(pixels);
+        assert!(res.is_ok());
+
+        for x in 0..WIDTH as u8 {
+            for y in 0..HEIGHT as u8 {
+                let res = disp.read(x, y);
+
+                if (y % GRID_SIZE_Y as u8 == 0) || (x % GRID_SIZE_X as u8 == 0) {
+                    assert_eq!(res, Ok(true));
+                } else {
+                    assert_eq!(res, Ok(false));
+                }
+            }
+        }
+
+        // Check that on-wire data matches the expected values
+        {
+            disp.flush();
+
+            let mut spi_parsed_pixels = HashMap::<(u8, u8), bool>::new();
+
+            for spi_writes in disp.spi.data_written.clone() {
+                for line in parse_spi_lines(&spi_writes) {
+                    for (k, v) in line.pixels.iter().map(|p| ((p.x, p.y), p.is_on)) {
+                        spi_parsed_pixels.insert(k, v);
+                    }
+                    assert_eq!(line.filler, FILLER_BYTE);
+                }
+            }
+
+            for x in 0..WIDTH as u8 {
+                for y in 0..HEIGHT as u8 {
+                    let res = spi_parsed_pixels.get(&(x, y));
+
+                    if (y % GRID_SIZE_Y as u8 == 0) || (x % GRID_SIZE_X as u8 == 0) {
+                        assert_eq!(res, Some(&true));
+                    } else {
+                        assert_eq!(res, Some(&false));
+                    }
+                }
+            }
+
+            // clear spi writes
+            disp.spi.data_written.clear();
+        }
+    }
+
+    #[test]
+    fn destroy() {
         let mut buffer = [0; BUF_SIZE];
         let disp = build_display(&mut buffer);
 
