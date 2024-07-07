@@ -290,19 +290,17 @@ where
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
         for Pixel(coord, color) in pixels.into_iter() {
-            const WIDTH_I32: i32 = WIDTH as i32;
-            const HEIGHT_I32: i32 = HEIGHT as i32;
             // Check if the pixel coordinates are out of bounds (negative or greater than
             // (WIDTH,HEIGHT)). `DrawTarget` implementation are required to discard any out of bounds
             // pixels without returning an error or causing a panic.
             //
             // NOTE: we are basically re-implementing `Ls013b7dh03.write()` here because we don't want to do the bounds
             //       check multiple times, AND this method may not return an OutOfBounds error or panic anyway.
-            if let Ok((x @ 0..=WIDTH_I32, y @ 0..=HEIGHT_I32)) = coord.try_into() {
-                let col_byte = x as usize / u8::BITS as usize;
-                let col_bit = x as usize % u8::BITS as usize;
-                let index =
-                    (y as usize * LINE_TOTAL_BYTE_COUNT) + (LINE_ADDRESS_BYTE_COUNT + col_byte);
+            if coord.x >= 0 && coord.x < WIDTH as i32 && coord.y >= 0 && coord.y < HEIGHT as i32 {
+                let col_byte = coord.x as usize / u8::BITS as usize;
+                let col_bit = coord.x as usize % u8::BITS as usize;
+                let index = (coord.y as usize * LINE_TOTAL_BYTE_COUNT)
+                    + (LINE_ADDRESS_BYTE_COUNT + col_byte);
                 // Pixel bits must be transmitted over SPI in reverse order,
                 // so that's also their order in each byte of the buffer
                 let bit_mask = 0x80 >> col_bit;
@@ -310,8 +308,8 @@ where
                 // We only want to mark this line to be transmitted over SPI if the pixel state actually needs changing
                 if ((self.buffer[index] & bit_mask) == 0) ^ color.is_on() {
                     // mark line as in need of update
-                    self.line_cache[y as usize / u32::BITS as usize] |=
-                        1u32 << (y as usize % u32::BITS as usize);
+                    self.line_cache[coord.y as usize / u32::BITS as usize] |=
+                        1u32 << (coord.y as usize % u32::BITS as usize);
 
                     // flip the pixel state
                     self.buffer[index] ^= bit_mask;
