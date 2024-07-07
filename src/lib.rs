@@ -328,12 +328,16 @@ mod tests {
     use super::{Ls013b7dh03, LINE_TOTAL_BYTE_COUNT};
     use crate::{LcdError, BUF_SIZE, FILLER_BYTE, HEIGHT, LINE_ADDRESS_BYTE_COUNT, WIDTH};
     use core::convert::Infallible;
-    use embedded_graphics::Pixel;
     use embedded_hal::{
         digital::{ErrorType as PinErrorType, InputPin, OutputPin, PinState},
         spi::{ErrorType as SpiErrorType, SpiBus},
     };
     use std::{collections::HashMap, vec::Vec};
+
+    #[cfg(feature = "embedded_graphics")]
+    use embedded_graphics::{
+        draw_target::DrawTarget, geometry::Point, pixelcolor::BinaryColor, Pixel,
+    };
 
     #[test]
     fn consts() {
@@ -719,11 +723,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded_graphics")]
     fn embedded_graphics_redundant_writes() {
-        use embedded_graphics::{
-            draw_target::DrawTarget, geometry::Point, pixelcolor::BinaryColor,
-        };
-
         let mut buffer = [0; BUF_SIZE];
         let mut disp = build_display(&mut buffer);
 
@@ -756,11 +757,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded_graphics")]
     fn embedded_graphics_read_write_grid() {
-        use embedded_graphics::{
-            draw_target::DrawTarget, geometry::Point, pixelcolor::BinaryColor,
-        };
-
         let mut buffer = [0; BUF_SIZE];
         let mut disp = build_display(&mut buffer);
 
