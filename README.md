@@ -6,7 +6,9 @@
 
 LS013B7DH03 Sharp LCD driver for [embedded-hal v1.0](https://github.com/rust-embedded/embedded-hal)
 
-Simply add the driver to your `Cargo.toml:
+# Stand alone usage
+
+Simply add the driver to your `Cargo.toml`:
 
 ```toml
 ls013b7dh03 = { version = "0.4" }
@@ -26,6 +28,7 @@ Use:
 
     display.flush();
 ```
+# embedded-graphics usage
 
 An optional implementation for the [embeddded-graphics](https://github.com/embedded-graphics/embedded-graphics) 2D graphics library is provided by the optional `embdded_graphics` feature:
 
