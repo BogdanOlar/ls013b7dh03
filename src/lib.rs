@@ -1,5 +1,8 @@
 //! LS013B7DH03 Sharp LCD driver for [embedded-hal v1.0](https://github.com/rust-embedded/embedded-hal)
 //!
+//! Use the optional `embedded_graphics` feature if you need to use this driver with the
+//! [embeddded-graphics](https://github.com/embedded-graphics/embedded-graphics) 2D graphics library
+//!
 #![no_std]
 
 // =======================
@@ -8,6 +11,10 @@
 #[macro_use]
 extern crate std;
 // =======================
+
+pub mod prelude {
+    pub use crate::{Ls013b7dh03, BUF_SIZE, HEIGHT, SPIMODE};
+}
 
 use embedded_hal::{
     digital::OutputPin,
@@ -25,11 +32,14 @@ use embedded_graphics::{
 
 /// The width, in pixels of the Ls013b7dh03 display
 pub const WIDTH: usize = 128;
+
 /// The height, in pixels of the Ls013b7dh03 display
 pub const HEIGHT: usize = 128;
+
 /// The buffer size this driver needs
 pub const BUF_SIZE: usize = HEIGHT * LINE_TOTAL_BYTE_COUNT;
-/// Convenience `Spi::Mode` struct instance needed by the Ls013b7dh03 display.
+
+/// Convenience `embedded_hal::spi::Mode` struct instance needed by the Ls013b7dh03 display.
 /// Feel free to use this to initialize the Spi passed to this driver
 pub const SPIMODE: Mode = Mode {
     polarity: Polarity::IdleLow,
@@ -75,7 +85,11 @@ where
 {
     /// Create a new Ls013b7dh03 display driver
     ///
-    /// This driver does not have its own internal buffer, so a `u8` mut slice of size [`BUF_SIZE`] must be provided
+    /// This driver does not have its own internal buffer, so a `u8` mut slice of size [`BUF_SIZE`] must be provided.
+    /// The `spi` parameter should be configured according to the [`SPIMODE`] constant provided by this crate,
+    /// with a MAX baudrate of 1.1 MHz.
+    /// The `com_in_pin` (Communication Invertion pin) must be handled by the application by using the `enable()` and
+    /// `disable()` methods to toggle the pin at 65 Hz
     pub fn new(
         spi: SPI,
         mut cs_pin: CS,
@@ -346,6 +360,9 @@ mod tests {
 
         // If this fails, then the size of `line_cache` needs to be increased/adjusted
         assert_eq!(HEIGHT % u32::BITS as usize, 0);
+
+        assert_eq!(BUF_SIZE / LINE_TOTAL_BYTE_COUNT, HEIGHT);
+        assert_eq!(BUF_SIZE % LINE_TOTAL_BYTE_COUNT, 0);
     }
 
     #[test]
@@ -732,8 +749,10 @@ mod tests {
         disp.spi.data_written.clear();
 
         // prepare iterator for the pixels to be written to "OFF" state
-        let pixels = (0..WIDTH)
-            .flat_map(move |x| (0..HEIGHT).map(move |y| (x, y)))
+        // We want to cover each pixel on the screen AND additional out-of-bounds writes
+        // (hence the `* 2` for WIDTH and HEIGHT)
+        let pixels = (0..(WIDTH * 2))
+            .flat_map(move |x| (0..(HEIGHT * 2)).map(move |y| (x, y)))
             .map(|(x, y)| {
                 Pixel::<BinaryColor>(
                     Point {
