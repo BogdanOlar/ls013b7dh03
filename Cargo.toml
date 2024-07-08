@@ -1,6 +1,6 @@
 [package]
 name = "ls013b7dh03"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Bogdan Olar <olar.bogdan.dev@gmail.com>"]
 edition = "2021"
 description = "LS013B7DH03 Sharp LCD driver for embedded-hal"
