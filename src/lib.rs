@@ -237,11 +237,12 @@ where
             // If there are one or more consecutive lines which need to be transmitted over SPI, then write them all
             // in the same call to `spi.write()`
             // ... Find the y of first line which needs updating
-            while let Some(y_start) = y_cache_bits.find(|(is_set, _)| *is_set).map(|(_, y)| y) {
+            while let Some(y_start) =
+                y_cache_bits.find_map(|(is_set, y)| if is_set { Some(y) } else { None })
+            {
                 // ... Find the y of first line which does NOT need updating
                 let y_end = y_cache_bits
-                    .find(|(is_set, _)| !(*is_set))
-                    .map(|(_, y)| y)
+                    .find_map(|(is_set, y)| if is_set { None } else { Some(y) })
                     .unwrap_or(HEIGHT);
 
                 // Calculate indexes in the buffer
