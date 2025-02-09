@@ -236,31 +236,20 @@ where
             // Check the bits in the `line_cache` to see which display lines need to be updated.
             // If there are one or more consecutive lines which need to be transmitted over SPI, then write them all
             // in the same call to `spi.write()`
-            while let Some((is_set, y)) = y_cache_bits.next() {
-                if is_set {
-                    let y_start = y;
-                    let mut y_end = None;
+            // ... Find the y of first line which needs updating
+            while let Some(y_start) = y_cache_bits.find(|(is_set, _)| *is_set).map(|(_, y)| y) {
+                // ... Find the y of first line which does NOT need updating
+                let y_end = y_cache_bits
+                    .find(|(is_set, _)| !(*is_set))
+                    .map(|(_, y)| y)
+                    .unwrap_or(HEIGHT);
 
-                    while let Some((is_set, y)) = y_cache_bits.next() {
-                        if is_set {
-                            y_end = Some(y);
-                        } else {
-                            break;
-                        }
-                    }
+                // Calculate indexes in the buffer
+                let i_start = y_start * LINE_TOTAL_BYTE_COUNT;
+                let i_end = y_end * LINE_TOTAL_BYTE_COUNT;
 
-                    let i_start = y_start * LINE_TOTAL_BYTE_COUNT;
-                    let i_end;
-
-                    if let Some(y_end) = y_end {
-                        i_end = (y_end + 1) * LINE_TOTAL_BYTE_COUNT;
-                    } else {
-                        i_end = i_start + LINE_TOTAL_BYTE_COUNT;
-                    }
-
-                    let spi_ret = self.spi.write(&self.buffer[i_start..i_end]);
-                    assert!(spi_ret.is_ok());
-                }
+                let spi_ret = self.spi.write(&self.buffer[i_start..i_end]);
+                assert!(spi_ret.is_ok());
             }
 
             // Write filler byte
